@@ -58,8 +58,8 @@ switch TASK
         near_equilibrium_sweep();
 
     case 7
-        % 【批量计算】只算 CSV 不出图，输入用 Python 那边的模板
-        inputCsv  = fullfile(thisDir, '..', 'batch_calculator', 'input_template.csv');
+        % 【批量计算】只算 CSV 不出图，使用本目录中的示例模板
+        inputCsv  = fullfile(thisDir, 'input_template.csv');
         outputCsv = fullfile(thisDir, 'results_from_template.csv');
         fprintf('任务 7：批量计算 %s\n', inputCsv);
         run_batch(inputCsv, outputCsv);

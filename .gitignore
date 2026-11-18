@@ -1,0 +1,29 @@
+# Python bytecode and IDE metadata
+__pycache__/
+*.py[cod]
+.idea/
+
+# Python-generated results
+results.csv
+baseline_eta_scan.csv
+baseline_eta_results.csv
+rH2_eta.png
+near_equilibrium_input.csv
+near_equilibrium_results.csv
+rH2_eta_Ushape.png
+rH2_eta_signed.png
+
+# MATLAB-generated results
+matlab/results_from_template.csv
+matlab/my_results.csv
+matlab/baseline_eta_scan.csv
+matlab/baseline_eta_results.csv
+matlab/rH2_eta.png
+matlab/rH2_eta_input.csv
+matlab/rH2_eta_results.csv
+matlab/rH2_eta_curve.png
+matlab/rH2_eta_curve_log.png
+matlab/near_equilibrium_input.csv
+matlab/near_equilibrium_results.csv
+matlab/rH2_eta_Ushape.png
+matlab/rH2_eta_signed.png
