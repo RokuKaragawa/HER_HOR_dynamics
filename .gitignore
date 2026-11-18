@@ -5,6 +5,7 @@ __pycache__/
 
 # Python-generated results
 results.csv
+comparison_results.csv
 baseline_eta_scan.csv
 baseline_eta_results.csv
 rH2_eta.png

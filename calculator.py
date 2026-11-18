@@ -17,6 +17,10 @@ REQUIRED_COLUMNS = [
     *[f'lambdaH{i}' for i in range(1, 5)],
     'eta', 'T', 'p', 'a_H', 'sigma',
 ]
+SIMPLE_PARAMETER_COLUMNS = (
+    'GA_simple', 'GV_simple', 'GH_simple', 'lambdaV_simple', 'lambdaH_simple',
+)
+SIMPLE_REQUIRED_COLUMNS = [*SIMPLE_PARAMETER_COLUMNS, 'eta', 'T', 'p', 'a_H', 'sigma']
 
 
 def calculate_kw(temperature):
@@ -98,6 +102,57 @@ def solve_coverages(params):
         return np.array([float(value / total) for value in coverages])
 
 
+def solve_single_site_coverages(params):
+    if len(params) != 8:
+        raise ValueError(f'Expected 8 single-site rate constants, got {len(params)}')
+
+    rates = [Decimal(str(float(value))) for value in params]
+    if any(not value.is_finite() or value < 0 for value in rates):
+        raise ValueError('Single-site rate constants must be finite and non-negative')
+
+    (a_forward, a_reverse, v_forward, v_reverse,
+     h_forward, h_reverse, d_forward, d_reverse) = rates
+    with localcontext() as context:
+        context.prec = 60
+        matrix = [
+            [Decimal(1), Decimal(1), Decimal(1), Decimal(1)],
+            [a_forward, -(a_reverse + v_forward), v_reverse, Decimal(0)],
+            [Decimal(0), v_forward, -(v_reverse + h_forward), h_reverse],
+            [d_reverse, Decimal(0), h_forward, -(h_reverse + d_forward)],
+        ]
+        right = [Decimal(1), Decimal(0), Decimal(0), Decimal(0)]
+        augmented = [row[:] + [value] for row, value in zip(matrix, right)]
+
+        for column in range(4):
+            pivot = max(
+                range(column, 4),
+                key=lambda row: abs(augmented[row][column]),
+            )
+            if augmented[pivot][column] == 0:
+                raise np.linalg.LinAlgError('Single-site steady-state matrix is singular')
+            augmented[column], augmented[pivot] = augmented[pivot], augmented[column]
+
+            for row in range(column + 1, 4):
+                factor = augmented[row][column] / augmented[column][column]
+                for j in range(column + 1, 5):
+                    augmented[row][j] -= factor * augmented[column][j]
+                augmented[row][column] = Decimal(0)
+
+        coverages = [Decimal(0) for _ in range(4)]
+        for row in range(3, -1, -1):
+            remainder = augmented[row][4] - sum(
+                augmented[row][j] * coverages[j] for j in range(row + 1, 4)
+            )
+            coverages[row] = remainder / augmented[row][row]
+
+        if any(value < 0 for value in coverages):
+            raise np.linalg.LinAlgError('Single-site solution contains negative coverage')
+        total = sum(coverages)
+        if total <= 0:
+            raise np.linalg.LinAlgError('Single-site solution has a non-positive sum')
+        return np.array([float(value / total) for value in coverages])
+
+
 def integrate_step_rate(free_energy, eta, ph, reorganization, kbt, water_energy, reverse, base):
     if reorganization <= 0:
         raise ValueError('Reorganization energy must be positive')
@@ -132,13 +187,32 @@ def calculate_electrochemical_rates(values, kbt, eta, ph, water_energy, proton_a
         family, number = ('V', step) if step <= 4 else ('H', step - 4)
         free_energy = values[f'G{family}{number}']
         reorganization = values[f'lambda{family}{number}']
-        acid_forward = integrate_step_rate(free_energy, eta, ph, reorganization, kbt, water_energy, False, False)
-        acid_reverse = integrate_step_rate(free_energy, eta, ph, reorganization, kbt, water_energy, True, False)
-        base_forward = integrate_step_rate(free_energy, eta, ph, reorganization, kbt, water_energy, False, True)
-        base_reverse = integrate_step_rate(free_energy, eta, ph, reorganization, kbt, water_energy, True, True)
-        rates[f'{family}{number}'] = acid_forward * prefactor * proton_activity + base_forward * prefactor
-        rates[f'{family}-{number}'] = acid_reverse * prefactor + base_reverse * prefactor * hydroxide_activity
+        rates[f'{family}{number}'], rates[f'{family}-{number}'] = calculate_electrochemical_rate_pair(
+            free_energy, reorganization, kbt, eta, ph, water_energy,
+            proton_activity, hydroxide_activity, prefactor,
+        )
     return rates
+
+
+def calculate_electrochemical_rate_pair(
+    free_energy, reorganization, kbt, eta, ph, water_energy,
+    proton_activity, hydroxide_activity, prefactor,
+):
+    acid_forward = integrate_step_rate(
+        free_energy, eta, ph, reorganization, kbt, water_energy, False, False
+    )
+    acid_reverse = integrate_step_rate(
+        free_energy, eta, ph, reorganization, kbt, water_energy, True, False
+    )
+    base_forward = integrate_step_rate(
+        free_energy, eta, ph, reorganization, kbt, water_energy, False, True
+    )
+    base_reverse = integrate_step_rate(
+        free_energy, eta, ph, reorganization, kbt, water_energy, True, True
+    )
+    forward = acid_forward * prefactor * proton_activity + base_forward * prefactor
+    reverse = acid_reverse * prefactor + base_reverse * prefactor * hydroxide_activity
+    return forward, reverse
 
 
 def calculate_nonideal_rates(values, delta_g0, kbt, sigma, prefactor):
@@ -164,6 +238,73 @@ def calculate_nonideal_rates(values, delta_g0, kbt, sigma, prefactor):
             rates['T_rate'] = forward
             rates['T_reverse_rate'] = reverse
     return rates
+
+
+def calculate_single_site_case(row):
+    values = {name: float(row[name]) for name in SIMPLE_REQUIRED_COLUMNS}
+    if not all(np.isfinite(value) for value in values.values()):
+        raise ValueError('Required single-site parameters must all be finite numbers')
+
+    temperature, proton_activity, pressure, sigma = (
+        values['T'], values['a_H'], values['p'], values['sigma']
+    )
+    if temperature <= 0 or proton_activity <= 0 or pressure <= 0 or sigma <= 0:
+        raise ValueError('T, p, a_H, and sigma must be positive')
+
+    k_b = float(row.get('kB', DEFAULT_KB))
+    planck = float(row.get('h', DEFAULT_H))
+    if not np.isfinite(k_b) or not np.isfinite(planck) or k_b <= 0 or planck <= 0:
+        raise ValueError('kB and h must be finite and positive')
+
+    kbt = k_b * temperature
+    prefactor = kbt / planck
+    kw = calculate_kw(temperature)
+    hydroxide_activity = kw / proton_activity
+    ph = -np.log10(proton_activity)
+    water_energy = -kbt * np.log(kw)
+    delta_g0 = kbt * (np.log(pressure) - 2.0 * np.log(proton_activity))
+    delta_g_d = delta_g0 - values['GA_simple'] - values['GV_simple'] - values['GH_simple']
+
+    def softplus_rates(free_energy):
+        forward = prefactor * np.exp(
+            -np.logaddexp(0.0, sigma * free_energy) / (sigma * kbt)
+        )
+        reverse = prefactor * np.exp(
+            -np.logaddexp(0.0, -sigma * free_energy) / (sigma * kbt)
+        )
+        return forward, reverse
+
+    a_forward, a_reverse = softplus_rates(values['GA_simple'])
+    d_forward, d_reverse = softplus_rates(delta_g_d)
+    v_forward, v_reverse = calculate_electrochemical_rate_pair(
+        values['GV_simple'], values['lambdaV_simple'], kbt, values['eta'],
+        ph, water_energy, proton_activity, hydroxide_activity, prefactor,
+    )
+    h_forward, h_reverse = calculate_electrochemical_rate_pair(
+        values['GH_simple'], values['lambdaH_simple'], kbt, values['eta'],
+        ph, water_energy, proton_activity, hydroxide_activity, prefactor,
+    )
+    coverage = solve_single_site_coverages([
+        a_forward, a_reverse, v_forward, v_reverse,
+        h_forward, h_reverse, d_forward, d_reverse,
+    ])
+    net_rate = d_forward * coverage[3] - d_reverse * coverage[0]
+    return {
+        'GD_simple': delta_g_d,
+        'A_simple': a_forward,
+        'A_reverse_simple': a_reverse,
+        'V_simple': v_forward,
+        'V_reverse_simple': v_reverse,
+        'H_simple': h_forward,
+        'H_reverse_simple': h_reverse,
+        'D_simple': d_forward,
+        'D_reverse_simple': d_reverse,
+        'theta_vacant': coverage[0],
+        'theta_H2O': coverage[1],
+        'theta_H': coverage[2],
+        'theta_H2': coverage[3],
+        'rH2': net_rate,
+    }
 
 
 def calculate_case(row):
