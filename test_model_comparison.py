@@ -10,7 +10,7 @@ from calculator import calculate_case, calculate_single_site_case, solve_single_
 from comparison_sweep import run_comparison
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parent
 
 
 class SingleSiteModelTests(unittest.TestCase):

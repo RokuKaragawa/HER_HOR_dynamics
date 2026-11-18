@@ -1,6 +1,6 @@
-# HER/HOR Python 动力学计算 / HER/HOR Python Kinetics
+# HER/HOR Python 动力学计算
 
-## 中文
+##
 
 本项目根目录包含 Python 版 HER/HOR 动力学计算程序，支持 CSV 批量计算、基线过电位扫描和近平衡区扫描。
 
@@ -61,6 +61,14 @@ python near_equilibrium_sweep.py
 python comparison_sweep.py
 ```
 
+### 测试
+
+根目录下的 `test_model_comparison.py` 用于验证单个位点模型的稳态覆盖度与净脱附速率、双模型扫描输出，以及复杂模型示例结果未发生回归。测试不是计算程序运行所必需的，但建议保留，以便修改后检查核心行为。安装项目依赖后，可在根目录运行：
+
+```powershell
+python -m unittest test_model_comparison
+```
+
 `input_template.csv` 是自定义输入模板。复制示例行并填写参数；每行代表一个计算情形，可使用唯一的 `case_id`。计算程序将结果写入单独的 CSV，不会修改输入文件。
 
 基线扫描默认从 `eta = -0.25` 到 `0.305 V`，步长 `0.005 V`；近平衡区扫描默认使用 `p = 0.1`、`a_H = 1.0`，从 `eta = -0.25` 到 `0.25 V`，步长 `0.002 V`。可通过命令行参数调整扫描范围和输出目录，详见：
@@ -79,7 +87,7 @@ python comparison_sweep.py --help
 
 运行后会在项目根目录生成输入/结果 CSV 和图像。结果文件可重新生成，默认由 `.gitignore` 排除；需要留档时请另行备份。
 
-## English
+##
 
 The repository root contains the Python HER/HOR kinetics tools for CSV batch calculations, a baseline overpotential sweep, and a near-equilibrium sweep.
 
@@ -138,6 +146,14 @@ python near_equilibrium_sweep.py
 
 # Compare both models over the same eta range
 python comparison_sweep.py
+```
+
+### Tests
+
+The root-level `test_model_comparison.py` checks steady-state coverages and net desorption for the single-site model, output from the two-model sweep, and regression of the example result for the dual-site model. Tests are not required to run the calculators, but are useful for checking core behavior after changes. With the project dependencies installed, run from the repository root:
+
+```powershell
+python -m unittest test_model_comparison
 ```
 
 Use `input_template.csv` as a template for custom inputs. Duplicate and edit the example row; each row represents one case and can have a unique `case_id`. The calculator writes results to a separate CSV and does not modify the input.
