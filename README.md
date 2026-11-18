@@ -1,6 +1,6 @@
-# HER/HOR Python 动力学计算
+# HER/HOR 动力学计算
 
-本项目根目录包含 Python 版 HER/HOR 动力学计算程序，支持 CSV 批量计算、基线过电位扫描和近平衡区扫描。
+本项目根目录包含 HER/HOR 相关动力学的模拟计算程序，支持 CSV 批量计算、基线过电位扫描和近平衡区扫描。
 
 ### 动力学模型理论
 
@@ -84,81 +84,3 @@ python comparison_sweep.py --help
 例如，可用 `python comparison_sweep.py --eta-start -0.3 --eta-stop 0.3 --eta-step 0.002 --output my_comparison.csv` 自定义扫描。输入表中的 `eta` 列会被扫描点覆盖。
 
 运行后会在项目根目录生成输入/结果 CSV 和图像。结果文件可重新生成，默认由 `.gitignore` 排除；需要留档时请另行备份。
-
-##
-
-The repository root contains the Python HER/HOR kinetics tools for CSV batch calculations, a baseline overpotential sweep, and a near-equilibrium sweep.
-
-### Kinetic-model theory
-
-The calculator implements steady-state microkinetics based on an elementary-reaction network. It obtains forward and reverse rate constants from the input parameters, writes steady-state material balances for the adsorbed surface species, and solves them together with a coverage normalization condition. Two mechanisms are available:
-
-**The simplified single-site model (without Tafel)** treats surface sites as equivalent and uses a reversible sequence from water adsorption through adsorbed hydrogen and hydrogen molecules to desorption:
-
-```text
-* + H₂O          ⇌ *H₂O                  adsorption A
-*H₂O + H⁺ + e⁻   ⇌ *H + H₂O              Volmer V
-*H + H⁺ + e⁻     ⇌ *H₂                   Heyrovsky H
-*H₂              ⇌ * + H₂                desorption D
-```
-
-The steady-state unknowns are `θ*`, `θH₂O`, `θH`, and `θH₂`. They are obtained from a four-state linear system and `θ* + θH₂O + θH + θH₂ = 1`. The net hydrogen-production rate is defined as the net desorption rate:
-
-```text
-rH₂ = kD · θH₂ − kD,reverse · θ*
-```
-
-**The adjacent dual-site model** treats two neighboring adsorption sites as a coupled reaction unit. It includes singly and doubly occupied intermediates and Tafel coupling between neighboring adsorbed hydrogen atoms. The mechanism contains 10 surface states and 17 elementary-reaction classes: 4 adsorption, 4 Volmer, 4 Heyrovsky, 4 desorption, and 1 Tafel reaction. Ten steady-state equations plus coverage normalization form a linear system; the total rate is the sum of the net rates of the four desorption pathways. This representation captures site blocking by a second adsorbate and the adjacency constraint on the Tafel step.
-
-**Rate constants and thermodynamic consistency:**
-
-- Non-electron-transfer steps such as adsorption, desorption, and Tafel use a Softplus activation-energy relation with Arrhenius kinetics. Softplus avoids unphysical negative activation energies that a simple linear free-energy relation can produce near zero or under strong driving.
-- Electron-transfer steps such as Volmer and Heyrovsky use numerical integration based on Marcus–Gerischer theory; forward and reverse rates include acid and base contributions.
-- Reaction free energies obey thermodynamic-cycle constraints. The overall reaction free energy is determined by temperature, hydrogen pressure, and proton activity: `ΔG₀ = kBT [ln(p) − 2 ln(a_H)]`. Desorption and Tafel free energies not supplied independently are derived from the cycle.
-
-**Parameter meaning in a model comparison:** `T`, `p`, `a_H`, `sigma`, and each `eta` scan value are shared by both models. The single-site parameters `GA_simple`, `GV_simple`, `GH_simple`, `lambdaV_simple`, and `lambdaH_simple` are supplied independently; they are not automatically selected or averaged from the four parameter groups of the dual-site model. Thus, a comparison is between the two models under the supplied parameter sets and does not by itself guarantee identical elementary-step free energies. Both models are evaluated at the same `eta` values in a sweep.
-
-This is a simplified microkinetic description for mechanistic analysis. For example, it does not explicitly include adsorbate interactions, distributions of site barriers, or double-layer structure; `sigma` also needs to be selected for the system of interest. Interpret calculated results in light of the input parameters and these assumptions.
-
-### Install dependencies
-
-Python 3 and the following packages are required:
-
-```powershell
-python -m pip install numpy scipy pandas matplotlib
-```
-
-### Run
-
-Run these commands from the repository root:
-
-```powershell
-# Calculate the example input and write results to results.csv
-python calculator.py --input input_template.csv --output results.csv
-
-# Baseline overpotential sweep
-python eta_sweep.py
-
-# Near-equilibrium sweep
-python near_equilibrium_sweep.py
-
-# Compare both models over the same eta range
-python comparison_sweep.py
-```
-
-### Tests
-
-The root-level `test_model_comparison.py` checks steady-state coverages and net desorption for the single-site model, output from the two-model sweep, and regression of the example result for the dual-site model. Tests are not required to run the calculators, but are useful for checking core behavior after changes. With the project dependencies installed, run from the repository root:
-
-```powershell
-python -m unittest test_model_comparison
-```
-
-Use `input_template.csv` as a template for custom inputs. Duplicate and edit the example row; each row represents one case and can have a unique `case_id`. The calculator writes results to a separate CSV and does not modify the input.
-
-The baseline sweep defaults to `eta = -0.25` through `0.305 V` in 0.005 V increments. The near-equilibrium sweep defaults to `p = 0.1`, `a_H = 1.0`, and `eta = -0.25` through `0.25 V` in 0.002 V increments. `comparison_sweep.py` calculates the single-site model (without Tafel) and adjacent dual-site model at the same temperature, pressure, activity, and eta values, and writes both `rH2` results to one CSV. Its input template includes dedicated single-site parameters: `GA_simple`, `GV_simple`, `GH_simple`, `lambdaV_simple`, and `lambdaH_simple`. Set `--eta-start`, `--eta-stop`, and `--eta-step` to adjust the comparison range. Customize scan ranges and output directories for the other sweeps with command-line options; use `--help` to see the available options.
-
-The comparison sweep defaults to `eta = -0.25` through `0.25 V` in 0.005 V increments and writes `comparison_results.csv`. Each input row is one parameter set; the output has one row per parameter set and eta value, including `rH2_single_site` and `rH2_dual_site`. Single-site parameters are supplied in their own columns. The example values match group 1 of the dual-site inputs, but the program does not derive them automatically. For example, run `python comparison_sweep.py --eta-start -0.3 --eta-stop 0.3 --eta-step 0.002 --output my_comparison.csv` to customize the sweep. The input `eta` column is overridden by each scan value.
-
-The scripts write scan/input CSV files, results, and plots to the repository root. These generated files can be recreated and are excluded by `.gitignore`; back them up separately if needed.
-
